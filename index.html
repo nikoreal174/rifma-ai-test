@@ -2,180 +2,419 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Проверка офлайн-ИИ</title>
+<meta name="viewport"
+      content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#141722">
+<title>Тест помощника — Qwen3 4B</title>
+
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 24px 16px;
+    padding: 20px 14px 60px;
     background: #11141e;
     color: #eef0fa;
-    font: 17px/1.6 system-ui, sans-serif;
+    font: 16px/1.6 system-ui, sans-serif;
   }
-  main { max-width: 650px; margin: auto; }
-  h1 { font-size: 26px; }
-  p { color: #bbc2d6; }
+  main { max-width: 720px; margin: auto; }
+  h1 { font-size: 25px; margin-bottom: 4px; }
+  h2 { font-size: 19px; }
+  p, small { color: #bac2d8; }
+  .card {
+    background: #1d2232;
+    border: 1px solid #37415c;
+    padding: 16px;
+    border-radius: 16px;
+    margin: 16px 0;
+  }
+  textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #465170;
+    border-radius: 10px;
+    background: #111722;
+    color: #f2f3fa;
+    font: 17px/1.6 system-ui, sans-serif;
+    resize: vertical;
+  }
   button {
-    padding: 14px 18px;
+    padding: 12px 16px;
+    margin: 5px 6px 5px 0;
     border: 0;
-    border-radius: 12px;
-    background: #7860d8;
+    border-radius: 10px;
+    background: #765bd0;
     color: white;
     font: inherit;
     cursor: pointer;
   }
-  button:disabled { opacity: .6; }
+  button:disabled { opacity: .45; cursor: default; }
+  .secondary { background: #38445c; }
   pre {
-    padding: 16px;
-    border: 1px solid #39425b;
-    border-radius: 14px;
-    background: #1b2030;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    font: 15px/1.7 monospace;
+    font: 15px/1.65 monospace;
+    margin-bottom: 0;
   }
+  #answer {
+    min-height: 100px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 18px;
+  }
+  progress { width: 100%; margin-top: 12px; }
+  label { display: block; margin: 12px 0 7px; }
 </style>
 </head>
+
 <body>
 <main>
-  <h1>Проверка офлайн-ИИ</h1>
-  <p>
-    Модель не скачивается. Проверяем только доступ
-    браузера к графическому процессору.
-  </p>
+  <h1>Помощник для строк</h1>
+  <p>Тест · Qwen3 4B · локальная генерация</p>
 
-  <button id="run">Проверить телефон</button>
-  <pre id="report" role="status">Нажми кнопку выше.</pre>
+  <section class="card">
+    <h2>1. Запустить модель</h2>
+    <p>
+      При первом запуске потребуется скачать примерно
+      2,28 ГБ файлов модели и дополнительные компоненты.
+      Загрузка начинается только после нажатия кнопки.
+    </p>
+    <button id="load">Загрузить и запустить модель</button>
+    <progress id="progress" max="1" value="0"></progress>
+    <pre id="status" role="status">Модель пока не загружена.</pre>
+    <p id="network"></p>
+  </section>
 
-  <p>
-    После проверки пришли скриншот результата.
-    Это предварительная диагностика, не тест скорости модели.
-  </p>
+  <section class="card">
+    <h2>2. Дать контекст</h2>
+
+    <label for="lyrics">Последние строки твоего текста</label>
+    <textarea id="lyrics" rows="6" maxlength="1800"
+      placeholder="Вставь несколько своих строк…"></textarea>
+
+    <label for="idea">Какую мысль хочется продолжить?</label>
+    <textarea id="idea" rows="3" maxlength="500"
+      placeholder="Необязательно. Например: хочу показать усталость, но без жалоб."></textarea>
+
+    <small>
+      Для теста: до 1800 символов текста и 500 символов идеи.
+      История прошлых запросов в новый запрос не включается.
+    </small>
+
+    <p>
+      <button id="generate" disabled>Предложить 5 начал</button>
+      <button id="stop" class="secondary" disabled>Остановить</button>
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>Варианты</h2>
+    <div id="answer" aria-live="polite">
+      Здесь появится ответ модели.
+    </div>
+    <p id="timing"></p>
+    <button id="copy" class="secondary" disabled>
+      Скопировать ответ
+    </button>
+    <p id="copyStatus"></p>
+  </section>
+
+  <section class="card">
+    <strong>Что именно проверяем</strong>
+    <p>
+      Сначала получи ответ с интернетом.
+      Затем отключи интернет, не закрывая и не обновляя
+      страницу, измени текст и запроси новые варианты.
+    </p>
+    <p>
+      Полноценный запуск после закрытия страницы
+      в авиарежиме в эту версию ещё не добавлен.
+    </p>
+    <p>
+      Эта тестовая страница не сохраняет твои строки.
+      Важное скопируй перед закрытием.
+    </p>
+  </section>
 </main>
 
-<script>
+<script type="module">
 "use strict";
 
-const button = document.getElementById("run");
-const report = document.getElementById("report");
+const $ = id => document.getElementById(id);
 
-function write(text) {
-  report.textContent += text + "\n";
+const MODEL = "Qwen3-4B-q4f16_1-MLC";
+const LIBRARY =
+  "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.87/+esm";
+
+let engine = null;
+let busy = false;
+let stopped = false;
+let wakeLock = null;
+let lastAnswer = "";
+
+function errorText(error) {
+  return error?.stack || error?.message || String(error);
 }
 
-function mib(bytes) {
-  return (bytes / 1024 / 1024).toFixed(0) + " МиБ";
+function updateNetwork() {
+  $("network").textContent = navigator.onLine
+    ? "Браузер сообщает: сеть доступна."
+    : "Браузер сообщает: сеть отключена.";
 }
 
-button.onclick = async () => {
-  button.disabled = true;
-  report.textContent = "";
-  let device = null;
+window.addEventListener("online", updateNetwork);
+window.addEventListener("offline", updateNetwork);
+updateNetwork();
+
+async function keepScreenOn() {
+  try {
+    if ("wakeLock" in navigator) {
+      wakeLock = await navigator.wakeLock.request("screen");
+    }
+  } catch {
+    // Отказ не мешает запуску.
+  }
+}
+
+async function releaseScreen() {
+  try {
+    if (wakeLock) await wakeLock.release();
+  } catch {}
+  wakeLock = null;
+}
+
+$("load").onclick = async () => {
+  if (busy || engine) return;
+
+  busy = true;
+  $("load").disabled = true;
+  $("progress").value = 0;
+  $("status").textContent = "Проверяю браузер…";
+
+  let candidate = null;
 
   try {
-    write("Проверка началась.");
-    write("");
-
-    write("Защищённая страница: " +
-      (window.isSecureContext ? "да" : "нет"));
-
-    if (!window.isSecureContext) {
+    if (!window.isSecureContext || !navigator.gpu) {
       throw new Error(
-        "Открой опубликованный сайт GitHub Pages по HTTPS."
+        "Нужен HTTPS и доступный WebGPU. " +
+        "Открой опубликованную тестовую страницу."
       );
     }
 
-    write("WebAssembly: " +
-      (typeof WebAssembly !== "undefined" ? "есть" : "нет"));
-
-    if (!navigator.gpu) {
-      throw new Error(
-        "WebGPU недоступен в этом браузере. " +
-        "Это не обязательно ограничение самого телефона."
-      );
-    }
-
-    write("WebGPU: есть.");
-    write("Запрашиваю графический адаптер…");
-
-    const adapter = await navigator.gpu.requestAdapter({
-      powerPreference: "high-performance"
-    });
+    const adapter = await navigator.gpu.requestAdapter();
 
     if (!adapter) {
+      throw new Error("Графический адаптер недоступен.");
+    }
+
+    if (!adapter.features.has("shader-f16")) {
       throw new Error(
-        "Браузер не предоставил графический адаптер."
+        "Для выбранной сборки нужна поддержка shader-f16."
       );
     }
 
-    write("Графический адаптер: доступен.");
+    await keepScreenOn();
 
-    const info = adapter.info;
-    if (info) {
-      write("GPU: " + [
-        info.vendor,
-        info.architecture,
-        info.description
-      ].filter(Boolean).join(" / "));
-    }
+    // Просим браузер сохранять данные устойчиво.
+    // Он может отказать; отсутствие разрешения не блокирует тест.
+    try {
+      await navigator.storage?.persist?.();
+    } catch {}
 
-    const f16 = adapter.features.has("shader-f16");
-    write("shader-f16: " + (f16 ? "есть" : "нет"));
+    $("status").textContent =
+      "Подключаю библиотеку WebLLM…";
 
-    write("");
-    write("Лимиты адаптера — НЕ объём свободной памяти:");
+    const webllm = await import(LIBRARY);
 
-    write("Один GPU-буфер: " +
-      mib(adapter.limits.maxBufferSize));
-
-    write("Storage-буфер: " +
-      mib(adapter.limits.maxStorageBufferBindingSize));
-
-    write("Память рабочей группы: " +
-      adapter.limits.maxComputeWorkgroupStorageSize + " байт");
-
-    write("");
-    write("Проверяю создание GPU-устройства…");
-
-    device = await adapter.requestDevice({
-      requiredFeatures: f16 ? ["shader-f16"] : []
-    });
-
-    write("GPU-устройство: создано.");
-    write("");
-    write("✓ Базовая проверка доступа к WebGPU пройдена.");
-
-    if (f16) {
-      write(
-        "Поддержка shader-f16 доступна. " +
-        "Можно переходить к проверке требований выбранной модели."
-      );
-    } else {
-      write(
-        "shader-f16 отсутствует. Нужно подобрать совместимую " +
-        "сборку модели, а не скачивать ранее предложенную вслепую."
-      );
-    }
-
-    write("");
-    write(
-      "Модель пока не запускалась. Скорость, качество русского " +
-      "текста и достаточность памяти этим тестом не проверены."
+    const record = webllm.prebuiltAppConfig.model_list.find(
+      item => item.model_id === MODEL
     );
 
+    if (!record) {
+      throw new Error(
+        "Выбранная модель отсутствует в каталоге библиотеки. " +
+        "Пришли этот текст — модель на другую автоматически не меняем."
+      );
+    }
+
+    candidate = new webllm.MLCEngine({
+      appConfig: {
+        ...webllm.prebuiltAppConfig,
+        model_list: [record]
+      },
+      initProgressCallback: progress => {
+        const value = Number(progress.progress);
+
+        if (Number.isFinite(value)) {
+          $("progress").value =
+            Math.max(0, Math.min(1, value));
+        }
+
+        $("status").textContent =
+          "Загрузка и подготовка модели:\n" +
+          (progress.text || "Подожди…");
+      }
+    });
+
+    // Ограничиваем контекст для первого теста.
+    await candidate.reload(MODEL, {
+      context_window_size: 4096
+    });
+
+    engine = candidate;
+    $("progress").value = 1;
+    $("load").textContent = "Модель запущена";
+    $("generate").disabled = false;
+    $("status").textContent =
+      "Модель готова к генерации на телефоне.\n" +
+      "Вставь текст ниже и нажми «Предложить 5 начал».";
+
   } catch (error) {
-    write("");
-    write("Проверка остановлена:");
-    write(error.message || String(error));
+    $("status").textContent =
+      "Не удалось запустить модель:\n\n" +
+      errorText(error) +
+      "\n\nСкопируй это сообщение и пришли в чат.";
+
+    if (candidate) {
+      try { await candidate.unload(); } catch {}
+    }
+
+    engine = null;
+    $("load").disabled = false;
+    $("load").textContent = "Повторить запуск";
 
   } finally {
-    if (device) device.destroy();
-    write("");
-    write("Браузер: " + navigator.userAgent);
-    button.disabled = false;
-    button.textContent = "Проверить ещё раз";
+    busy = false;
+    await releaseScreen();
+  }
+};
+
+$("generate").onclick = async () => {
+  if (!engine || busy) return;
+
+  const lyrics = $("lyrics").value.trim();
+  const idea = $("idea").value.trim();
+
+  if (!lyrics && !idea) {
+    $("answer").textContent =
+      "Сначала напиши несколько строк или хотя бы идею.";
+    return;
+  }
+
+  busy = true;
+  stopped = false;
+  lastAnswer = "";
+
+  $("generate").disabled = true;
+  $("stop").disabled = false;
+  $("copy").disabled = true;
+  $("copyStatus").textContent = "";
+  $("answer").textContent = "Модель подготавливает ответ…";
+
+  const started = performance.now();
+  const timer = setInterval(() => {
+    $("timing").textContent =
+      "Прошло: " +
+      ((performance.now() - started) / 1000).toFixed(1) +
+      " с";
+  }, 250);
+
+  try {
+    await keepScreenOn();
+
+    const stream = await engine.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content:
+            "Ты помогаешь писать оригинальные тексты песен на русском. " +
+            "Предложи ровно пять разных начал следующей строки. " +
+            "Каждое начало — от двух до пяти слов. " +
+            "Учитывай смысл, рассказчика и настроение данного текста. " +
+            "Не повторяй существующие строки. " +
+            "Не пиши целую песню и не навязывай тему любви. " +
+            "Если указана идея, опирайся на неё. " +
+            "Выведи только нумерованный список из пяти вариантов, " +
+            "без предисловия и объяснений."
+        },
+        {
+          role: "user",
+          content:
+            "Последние строки:\n" +
+            (lyrics || "(текста пока нет)") +
+            "\n\nИдея продолжения:\n" +
+            (idea || "Продолжи мысль из текста.") +
+            "\n\nПредложи пять начал следующей строки. /no_think"
+        }
+      ],
+      stream: true,
+      temperature: 0.8,
+      top_p: 0.9,
+      max_tokens: 350,
+      extra_body: {
+        enable_thinking: false
+      }
+    });
+
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content || "";
+      if (text) {
+        lastAnswer += text;
+        $("answer").textContent = lastAnswer;
+      }
+    }
+
+    if (!lastAnswer.trim()) {
+      $("answer").textContent =
+        stopped
+          ? "Генерация остановлена до появления ответа."
+          : "Модель не выдала текст. Пришли это сообщение в чат.";
+    }
+
+    $("status").textContent = stopped
+      ? "Генерация остановлена."
+      : "Ответ получен. Можно изменить текст и попробовать ещё.";
+
+  } catch (error) {
+    $("status").textContent =
+      "Ошибка генерации:\n\n" + errorText(error);
+
+    if (!lastAnswer) {
+      $("answer").textContent =
+        "Ответ не получен. Скопируй сообщение об ошибке выше.";
+    }
+
+  } finally {
+    clearInterval(timer);
+    $("timing").textContent =
+      "Время запроса: " +
+      ((performance.now() - started) / 1000).toFixed(1) +
+      " с";
+
+    busy = false;
+    $("generate").disabled = false;
+    $("stop").disabled = true;
+    $("copy").disabled = !lastAnswer.trim();
+
+    await releaseScreen();
+  }
+};
+
+$("stop").onclick = () => {
+  if (!engine || !busy) return;
+  stopped = true;
+  engine.interruptGenerate();
+  $("stop").disabled = true;
+};
+
+$("copy").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(lastAnswer);
+    $("copyStatus").textContent = "Ответ скопирован.";
+  } catch {
+    $("copyStatus").textContent =
+      "Не удалось скопировать автоматически. " +
+      "Выдели текст ответа и скопируй вручную.";
   }
 };
 </script>
