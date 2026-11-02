@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Проверка офлайн-ИИ</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px;
+    background: #11141e;
+    color: #eef0fa;
+    font: 17px/1.6 system-ui, sans-serif;
+  }
+  main { max-width: 650px; margin: auto; }
+  h1 { font-size: 26px; }
+  p { color: #bbc2d6; }
+  button {
+    padding: 14px 18px;
+    border: 0;
+    border-radius: 12px;
+    background: #7860d8;
+    color: white;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .6; }
+  pre {
+    padding: 16px;
+    border: 1px solid #39425b;
+    border-radius: 14px;
+    background: #1b2030;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 15px/1.7 monospace;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Проверка офлайн-ИИ</h1>
+  <p>
+    Модель не скачивается. Проверяем только доступ
+    браузера к графическому процессору.
+  </p>
+
+  <button id="run">Проверить телефон</button>
+  <pre id="report" role="status">Нажми кнопку выше.</pre>
+
+  <p>
+    После проверки пришли скриншот результата.
+    Это предварительная диагностика, не тест скорости модели.
+  </p>
+</main>
+
+<script>
+"use strict";
+
+const button = document.getElementById("run");
+const report = document.getElementById("report");
+
+function write(text) {
+  report.textContent += text + "\n";
+}
+
+function mib(bytes) {
+  return (bytes / 1024 / 1024).toFixed(0) + " МиБ";
+}
+
+button.onclick = async () => {
+  button.disabled = true;
+  report.textContent = "";
+  let device = null;
+
+  try {
+    write("Проверка началась.");
+    write("");
+
+    write("Защищённая страница: " +
+      (window.isSecureContext ? "да" : "нет"));
+
+    if (!window.isSecureContext) {
+      throw new Error(
+        "Открой опубликованный сайт GitHub Pages по HTTPS."
+      );
+    }
+
+    write("WebAssembly: " +
+      (typeof WebAssembly !== "undefined" ? "есть" : "нет"));
+
+    if (!navigator.gpu) {
+      throw new Error(
+        "WebGPU недоступен в этом браузере. " +
+        "Это не обязательно ограничение самого телефона."
+      );
+    }
+
+    write("WebGPU: есть.");
+    write("Запрашиваю графический адаптер…");
+
+    const adapter = await navigator.gpu.requestAdapter({
+      powerPreference: "high-performance"
+    });
+
+    if (!adapter) {
+      throw new Error(
+        "Браузер не предоставил графический адаптер."
+      );
+    }
+
+    write("Графический адаптер: доступен.");
+
+    const info = adapter.info;
+    if (info) {
+      write("GPU: " + [
+        info.vendor,
+        info.architecture,
+        info.description
+      ].filter(Boolean).join(" / "));
+    }
+
+    const f16 = adapter.features.has("shader-f16");
+    write("shader-f16: " + (f16 ? "есть" : "нет"));
+
+    write("");
+    write("Лимиты адаптера — НЕ объём свободной памяти:");
+
+    write("Один GPU-буфер: " +
+      mib(adapter.limits.maxBufferSize));
+
+    write("Storage-буфер: " +
+      mib(adapter.limits.maxStorageBufferBindingSize));
+
+    write("Память рабочей группы: " +
+      adapter.limits.maxComputeWorkgroupStorageSize + " байт");
+
+    write("");
+    write("Проверяю создание GPU-устройства…");
+
+    device = await adapter.requestDevice({
+      requiredFeatures: f16 ? ["shader-f16"] : []
+    });
+
+    write("GPU-устройство: создано.");
+    write("");
+    write("✓ Базовая проверка доступа к WebGPU пройдена.");
+
+    if (f16) {
+      write(
+        "Поддержка shader-f16 доступна. " +
+        "Можно переходить к проверке требований выбранной модели."
+      );
+    } else {
+      write(
+        "shader-f16 отсутствует. Нужно подобрать совместимую " +
+        "сборку модели, а не скачивать ранее предложенную вслепую."
+      );
+    }
+
+    write("");
+    write(
+      "Модель пока не запускалась. Скорость, качество русского " +
+      "текста и достаточность памяти этим тестом не проверены."
+    );
+
+  } catch (error) {
+    write("");
+    write("Проверка остановлена:");
+    write(error.message || String(error));
+
+  } finally {
+    if (device) device.destroy();
+    write("");
+    write("Браузер: " + navigator.userAgent);
+    button.disabled = false;
+    button.textContent = "Проверить ещё раз";
+  }
+};
+</script>
+</body>
+</html>
